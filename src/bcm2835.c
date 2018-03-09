@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <string.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -66,6 +67,9 @@ static uint8_t debug = 0;
 /* I2C The time needed to transmit one byte. In microseconds.
  */
 static int i2c_byte_wait_us = 0;
+
+// Time for millis()
+static unsigned long long epoch ;
 
 /*
 // Low level register access functions
@@ -464,6 +468,19 @@ void bcm2835_delayMicroseconds(uint64_t micros)
     }    
   
     bcm2835_st_delay(start, micros);
+}
+
+// This function is added in order to simulate arduino millis() function
+unsigned int bcm2835_millis(void)
+{
+struct timeval now;
+unsigned long long ms;
+
+gettimeofday(&now, NULL);
+
+ms = (now.tv_sec * 1000000 + now.tv_usec) / 1000 ;
+
+return ((uint32_t) (ms - epoch ));
 }
 
 /*
@@ -1497,3 +1514,6 @@ int main(int argc, char **argv)
     return 0;
 }
 #endif
+
+
+
