@@ -1,4 +1,4 @@
-defmodule NERVES_RF24 do
+defmodule Nerves.IO.RF24 do
   @moduledoc """
 Worker module that spawns the RF24L01 port process and handles all communication
 

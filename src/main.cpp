@@ -9,7 +9,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
+#include <string>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
@@ -81,13 +81,6 @@ int main(int argc, char *argv[])
         // Print preamble:
         printf("nerves_io_RF24\n");
 
-        radioInit();
-
-	if (argc != 2)
-       {
-            err(1, "Usage: rf24 <spi_speed|test>");
-        }
-
        // test mode; send tag to host every second
        if (!strcmp(argv[1], "test"))
        {
@@ -95,11 +88,23 @@ int main(int argc, char *argv[])
             for (;;) 
              {
                time = millis();
-               testStringLength = sprintf(testString,"RF24: %u", time);
-               send_data(testString, testStringLength);
+               testStringLength = sprintf(testString,"RF24");
+               send_data("RF24", 4);
                usleep(1000000);
             }
        }
+
+        radioInit();
+
+	if (argc != 2)
+       {
+            err(1, "Usage: rf24 <spi_speed|test>");
+        }        radioInit();
+
+	if (argc != 2)
+       {
+            err(1, "Usage: rf24 <spi_speed|test>");
+        }
 
         // forever loop
 	while (1)
