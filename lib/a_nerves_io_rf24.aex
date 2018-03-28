@@ -1,0 +1,407 @@
+defmodule Nerves.IO.RF24 do
+
+ #require IEx; IEx.pry
+
+  # Many calls take timeouts for how long to wait for reading and writing
+  # serial ports. This is the additional time added to the GenServer message passing
+  # timeout so that the interprocess messaging timers don't hit before the
+  # timeouts on the actual operations.
+  @genserver_timeout_slack 100
+
+  # There's a timeout when interacting with the port as well. If the port
+  # doesn't respond by timeout + @port_timeout_slack, then there's something
+  # wrong with it.
+  @port_timeout_slack 50
+
+  @moduledoc """
+   Worker module that spawns the RF24L01 port process and handles all communication
+
+   ## Examples
+
+      iex> NERVES_RF24.hello
+      :world
+
+  """
+  use GenServer
+  import IEx.Helpers
+  require Logger
+
+  defmodule State do
+    @moduledoc false
+
+    # port: C port process
+    # controlling_process: where events get sent
+    # name: port name when opened
+    # framing: framing behaviour
+    # framing_state: framing behaviour's state
+    # rx_framing_timeout: how long to wait for incomplete frames
+    # queued_messages: queued messages when in passive mode
+    # rx_framing_tref: frame completion timer
+    # is_active: active or passive mode
+    defstruct port: nil,
+    controlling_process: nil,
+    name: nil,
+    framing: nil,
+    framing_state: nil,
+    rx_framing_timeout: 0,
+    queued_messages: [],
+    rx_framing_tref: nil,
+    is_active: true
+  end
+
+  @type radio_option ::
+          {:active, boolean}
+          | {:speed, 0..3}
+          | {:CRC_Length, 0..2}
+          | {:PA_level, 0..2}
+
+ #  def start_link(callback) do
+ #    GenServer.start_link(__MODULE__, [callback], name: __MODULE__)
+ # end
+
+  @spec start_link([term]) :: {:ok, pid} | {:error, term}
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, [], opts)
+  end
+
+ # defmodule State do
+ #  @moduledoc false
+ #   defstruct port: nil, callback: nil
+ # end
+
+ def init([]) do
+    executable = :code.priv_dir(:nerves_io_rf24) ++ '/rf24'
+    args()
+    port = Port.open({:spawn_executable, executable},
+                     [{:args, args()},
+                      {:packet, 2},
+                      :use_stdio,
+                      :binary,
+                      :exit_status])
+    state = %State{port: port}
+    {:ok, state}
+  end
+
+  def handle_call({:open, name, opts}, {from_pid, _}, state) doaming
+    IO.inspect opts
+    response = call_port(state, :open, {name, opts})
+
+    new_state =
+        change_framing(
+         %{
+            state
+            | name: name,
+            controlling_process: from_pid,
+            rx_framing_timeout: new_rx_framing_timeout,
+            is_active: is_active
+       },
+        new_framing
+      )
+
+     {:reply, response, new_state}
+     IO.inspect Map.fetch(state, :port)
+     #IO.inspect response
+     IO.puts "Step 20"
+  end
+
+  def handle_call(:close, _from, state) do
+    # Clean up the C side
+    response = call_port(state, :close, nil)
+
+#    new_state =
+#      handle_framing_timer(
+#        %{state | name: nil, framing_state: new_framing_state, queued_messages: []},
+#        :ok
+#      )
+
+#    {:reply, response, new_state}
+    IO.puts "step 2"
+    {:reply, response, state}
+    IO.puts "step 3"
+  end
+
+  def handle_call({:flush, direction}, _from, state) do
+    IO.puts "Step 21"
+    fstate = apply(state.framing, :flush, [direction, state.framing_state])
+    new_state = %{state | framing_state: fstate}
+    response = call_port(new_state, :flush, direction)
+    {:reply, response, new_state}
+  end
+
+  def handle_call({:read, _timeout}, _from, %{queued_messages: [message | rest]} = state) do
+    IO.puts "Step 22"
+    # Return the queued response.
+    new_state = %{state | queued_messages: rest}
+    {:reply, {:ok, message}, new_state}
+  end
+
+  def handle_call({:read, timeout}, from, state) do
+    IO.puts "Step 23"
+    call_time = System.monotonic_time(:millisecond)
+     # Poll the serial port
+    case call_port(state, :read, timeout, port_timeout(timeout)) do
+      {:ok, <<>>} ->
+        IO.puts "hi:1"
+        # Timeout
+        {:reply, {:ok, <<>>}, state}
+
+      {:ok, buffer} ->
+         IO.puts "hi:2"
+        # More data
+        {rc, messages, new_framing_state} =
+          apply(state.framing, :remove_framing, [buffer, state.framing_state])
+
+        new_state = handle_framing_timer(%{state | framing_state: new_framing_state}, rc)
+
+        if messages == [] do
+          # If nothing, poll some more with reduced timeout
+          elapsed = System.monotonic_time(:millisecond) - call_time
+          retry_timeout = max(timeout - elapsed, 0)
+          handle_call({:read, retry_timeout}, from, new_state)
+        else
+          # Return the first message
+          [first_message | rest] = messages
+          new_state = %{new_state | queued_messages: rest}
+          {:reply, {:ok, first_message}, new_state}
+        end
+
+      response ->
+        IO.puts "hi:3"
+        # Error
+        {:reply, response, state}
+    end
+  end
+
+ def handle_info({_, {:data, <<?n, message::binary>>}}, state) do
+    IO.puts "step 15"
+    msg = :erlang.binary_to_term(message)
+    handle_port(msg, state)
+    {:noreply, state}
+ end
+
+def handle_info({port, {:data, data}}, state = %State{port: port}) do
+    IO.puts "step 14"
+    cmd = :erlang.binary_to_term(data)
+    IO.inspect cmd
+    # handle_cmd(cmd, state)
+    {:noreply, state}
+ end
+
+  def handle_info({port, {:exit_status, 1}}, state = %State{port: port}) do
+     IO.puts "step 11"
+ #   {:stop, {:error, :port_failure}, %State{state | port: nil}}
+  end
+
+  def handle_info({port, {:exit_status, s}}, state = %State{port: port}) when s > 1 do
+     # restart after 2 sec
+    IO.puts "step 12"
+    IO.inspect state
+    IO.inspect s
+  {:noreply, %State{state | port: nil}}
+ #   {:stop, {:error, :port_failure}, %State{state | port: nil}}
+  end
+
+ # def handle_info(:timeout, state = %State{port: nil}) do
+ #   IO.puts "step 10"
+ #   IO.inspect state
+ #   {:noreply, restart(state)}
+ # end
+
+  def handle_info({:ok, {:data, data}}state = %State{port: port}) do
+    IO.puts "step 13"
+    {:noreply, state}
+  end
+
+ def handle_info(unknown, state) do
+   IO.puts "step 18"
+   Logger.info "Huh? #{inspect unknown}"
+   {:noreply, unknown}
+ end
+
+  @doc """
+  Open a RF24 radio port.
+
+  The following options are available:
+
+    * `:active` - (`true` or `false`) specifies whether data is received as
+       messages or by calling `read/2`. See discussion below.
+
+    * `:speed` - (0,2) RF24_1MBPS (0), RF24_2MBPS (1), RF24_250KBPS (2)
+
+    * `:CRC Length' - (0,2) RF24_CRC_DISABLED (0), RF24_CRC_8 (1), RF24_CRC_16 (2) 
+
+    * `:PA Level` - (0, 4) RF24_PA_MIN (0), RF24_PA_LOW (1), RF24_PA_HIGH (2), RF24_PA_MAX (3), RF24_PA_ERROR (4)
+
+    * `:framing` - (`module` or `{module, args}`) set the framing for data.
+      The `module` must implement the `Nerves.UART.Framing` behaviour. See
+      `Nerves.UART.Framing.None`, `Nerves.UART.Framing.Line`, and
+      `Nerves.UART.Framing.FourByte`. The default is `Nerves.UART.Framing.None`.
+
+    * `:rx_framing_timeout` - (milliseconds) this specifies how long incomplete
+      frames will wait for the remainder to be received. Timed out partial
+      frames are reported as `{:partial, data}`. A timeout of <= 0 means to
+      wait forever.
+
+  On error, `{:error, reason}` is returned.
+  The following are some reasons:
+
+    * `:enoent`  - the specified port couldn't be found
+    * `:eagain`  - the port is already open
+    * `:eacces`  - permission was denied when opening the port
+  """
+  @spec open(GenServer.server(), binary, [RF24_option]) :: :ok | {:error, term}
+  def open(pid, name, opts \\ []) do
+    IO.puts "Step 30"
+    IO.inspect pid
+    GenServer.call(pid, {:open, name, opts})
+  end
+
+  @doc """
+  Close the Radio Connection port. The GenServer continues to run so that a port can
+  be opened again.
+  """
+  @spec close(GenServer.server()) :: :ok | {:error, term}
+  def close(pid) do
+    IO.puts "Step 31"
+    GenServer.call(pid, :close)
+  end
+
+  @doc """
+  Flushes the `:receive` buffer, the `:transmit` buffer, or `:both`.
+
+  See [tcflush(3)](http://linux.die.net/man/3/tcflush) for low level details on
+  Linux or OSX. This calls `PurgeComm` on Windows.
+  """
+  @spec flush(GenServer.server()) :: :ok | {:error, term}
+  def flush(pid, direction \\ :both) do
+     IO.puts "Step 32"
+    GenServer.call(pid, {:flush, direction})
+  end
+
+  @spec configure(GenServer.server(), [radio_option]) :: :ok | {:error, term}
+  def configure(pid, opts) do
+    IO.puts "Step 33"
+    GenServer.call(pid, {:configure, opts})
+  end
+
+#  defp restart(state) do
+#    executable = :code.priv_dir(:nerves_io_rf24) ++ '/rf24'
+#    args()
+#    port = Port.open({:spawn_executable, executable},
+#                     [{:args, args()},
+#                      {:packet, 2},
+#                      :use_stdio,
+#                      :binary,
+#                      :exit_status])
+#     state = %State{port: port}
+#     IO.puts "step 4"
+#     IO.inspect state
+#    %State{state | port: port}     
+#  end
+
+ # defp handle_cmd({:tag, tag}, %State{callback: callback}) when is_function(callback) do
+ #   callback.(tag)
+ #end
+
+ # defp handle_cmd({:tag, tag}, %State{callback: {m, f}}) do
+ #   apply(m, f, [tag])
+ # end
+
+ # defp change_framing(state, nil), do: state
+
+ # defp change_framing(state, framing_mod) when is_atom(framing_mod) do
+ #   change_framing(state, {framing_mod, []})
+ # end
+
+ # defp change_framing(state, {framing_mod, framing_args}) do
+ #   {:ok, framing_state} = apply(framing_mod, :init, [framing_args])
+ #   %{state | framing: framing_mod, framing_state: framing_state}
+ # end
+
+ defp call_port(state, command, arguments, timeout \\ 15000) do
+    msg = {command, arguments}
+    send(state.port, {self(), {:command, :erlang.term_to_binary(msg)}})
+    # Block until the response comes back since the C side
+    # doesn't want to handle any queuing of requests. REVISIT
+    receive do
+       {_, {:data, <<?r, response::binary>>}} ->
+       :erlang.binary_to_term(response)
+       IO.puts "step 1"
+#    after
+#       timeout ->
+        # Not sure how this can be recovered
+        #exit(:port_timed_out)
+#        {:ok, restart(state)}
+       IO.puts "step 5"
+    end
+  end
+
+  defp handle_port({:notif, data}, state) when is_binary(data) do
+    # IO.puts "Received data on port #{state.name}"
+     IO.puts "Step 34"
+    {rc, messages, new_framing_state} =
+      apply(state.framing, :remove_framing, [data, state.framing_state])
+
+   new_state = handle_framing_timer(%{state | framing_state: new_framing_state}, rc)
+
+    if state.controlling_process do
+      Enum.each(messages, &report_message(new_state, &1))
+    end
+
+    {:noreply, new_state}
+  end
+
+  defp handle_port({:notif, data}, state) do
+     IO.puts "Step 35"
+    # Report an error from the port
+    if state.controlling_process do
+      report_message(state, data)
+    end
+
+    {:noreply, state}
+  end
+
+  defp report_message(state, message) do
+    IO.puts "Step 36"
+    event = {:nerves_uart, state.name, message}
+    send(state.controlling_process, event)
+  end
+
+  defp genserver_timeout(timeout) do
+    IO.puts "Step 37"
+    max(timeout + @genserver_timeout_slack, @genserver_timeout_slack)
+  end
+
+  defp port_timeout(timeout) do
+    IO.puts "Step 38"
+    max(timeout + @port_timeout_slack, @port_timeout_slack)
+  end
+
+  # Stop the framing timer if active and a frame completed
+  defp handle_framing_timer(%{rx_framing_tref: tref} = state, :ok) when tref != nil do
+    _ = :timer.cancel(tref)
+    IO.puts "Step 39"
+    %{state | rx_framing_tref: tref}
+  end
+
+  # Start the framing timer if ended on an incomplete frame
+  defp handle_framing_timer(%{rx_framing_timeout: timeout} = state, :in_frame) when timeout > 0 do
+    _ = if state.rx_framing_tref, do: :timer.cancel(state.rx_framing_tref)
+    {:ok, tref} = :timer.send_after(timeout, :rx_framing_timed_out)
+    IO.puts "Step 40"
+    %{state | rx_framing_tref: tref}
+  end
+
+  # Don't do anything with the framing timer for all other reasons
+  defp handle_framing_timer(state, _rc), do: state
+
+  @env Mix.env
+  defp args() do
+    case @env do
+      :test ->
+        ["test"];
+      _ ->
+        [Integer.to_string(5000)]
+    end
+  end
+end

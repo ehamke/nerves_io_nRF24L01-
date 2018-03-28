@@ -55,19 +55,15 @@ CFLAGS=-march=armv6zk -mtune=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard -O2 -Wall -
 all: priv/rf24
 
 %.o: %.c
-	$(CC) -c  $(ERL_CFLAGS) $(CFLAGS) -o $@ $<
+	$(CC) -c -fPIC $(ERL_CFLAGS) $(CFLAGS) -o $@ $<
 
 %.o: %.cpp
-	$(CXX) -c $(ERL_CFLAGS) $(CFLAGS) -o $@ $<
+	$(CXX) -c -fPIC $(ERL_CFLAGS) $(CFLAGS) -o $@ $<
 
-priv/rf24: src/main.o src/bcm2835.o src/RF24.o src/interrupt.o src/spi.o
+priv/rf24: src/main.o src/bcm2835.o src/RF24.o src/interrupt.o src/spi.o src/erlcmd.o src/telemtry.o
 	@mkdir -p priv
 	$(CXX) $^ $(ERL_LDFLAGS) $(LDFLAGS) -lpthread -o $@
 
 clean:
 	rm -f priv/rf24 src/*.o
-
-
-
-
 
