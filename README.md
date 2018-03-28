@@ -1,2 +1,21 @@
-# nerves_io_nRF24L01-
-Exlixir nerves interface to nRF24L01+ based on work by Arjan Scherpenisse (https://github.com/arjan/nerves_io_rc522) and TMRh20 (https://tmrh20.github.io/RF24/RPi.html)
+# NERVES_RF24
+
+**TODO: Add description**
+
+## Installation
+
+If [available in Hex](https://hex.pm/docs/publish), the package can be installed
+by adding `nerves_io_rf24` to your list of dependencies in `mix.exs`:
+
+```elixir
+def deps do
+  [
+    {:nerves_io_rf24, "~> 0.1.0"}
+  ]
+end
+```
+
+Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
+and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
+be found at [https://hexdocs.pm/nerves_io_rf24](https://hexdocs.pm/nerves_io_rf24).
+
