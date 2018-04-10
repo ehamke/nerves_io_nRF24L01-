@@ -1,0 +1,31 @@
+defmodule Nerves.IO.RadioManager do
+
+use Supervisor
+
+  @moduledoc """
+  Documentation for RadioManager.
+  """
+
+  @doc """
+  Hello world.
+
+  ## Examples
+
+      iex> RadioManager.hello
+      :world
+
+  """
+
+   @spec start_link([term]) :: {:ok, pid} | {:error, term}
+   def start_link(opts \\ []) do
+      GenServer.start_link(__MODULE__, [], opts)
+   end
+
+   def init({:ok}) do
+       children = {
+           Nerves.IO.RF24
+       }
+       Supervisor.init(children, strategy: :one_for_one)
+   end
+
+end

@@ -1,0 +1,9 @@
+{application,radio_manager,
+             [{applications,[kernel,stdlib,elixir,logger]},
+              {description,"radio_manager"},
+              {modules,['Elixir.RadioManager',
+                        'Elixir.RadioManager.Application']},
+              {registered,[]},
+              {vsn,"0.1.0"},
+              {extra_applications,[logger]},
+              {mod,{'Elixir.RadioManager.Application',[]}}]}.
