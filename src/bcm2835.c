@@ -42,6 +42,11 @@
 uint32_t *bcm2835_peripherals_base = (uint32_t *)BCM2835_PERI_BASE;
 uint32_t bcm2835_peripherals_size = BCM2835_PERI_SIZE;
 
+    int len;
+    char buffer[100];
+
+
+
 /* Virtual memory address of the mapped peripherals block 
  */
 uint32_t *bcm2835_peripherals = (uint32_t *)MAP_FAILED;
@@ -100,6 +105,15 @@ uint32_t* bcm2835_regbase(uint8_t regbase)
     return (uint32_t *)MAP_FAILED;
 }
 
+void logData2(const char *uid){
+        FILE *pFileLog;
+        pFileLog = fopen ("aTextFile.txt","a");     // use "a" for append, "w" to overwrite, previous content will be deleted
+
+       fprintf(pFileLog,"%s\n",uid);
+
+       fclose (pFileLog);
+}
+
 void  bcm2835_set_debug(uint8_t d)
 {
     debug = d;
@@ -115,17 +129,24 @@ unsigned int bcm2835_version(void)
  */
 uint32_t bcm2835_peri_read(volatile uint32_t* paddr)
 {
+
     uint32_t ret;
     if (debug)
     {
-        printf("bcm2835_peri_read  paddr %08X\n", (unsigned) paddr);
+        //printf("bcm2835_peri_read  paddr %08X\n", (unsigned) paddr);
+        len = sprintf(buffer, "bcm2835_peri_read paddr %08X\n", (unsigned) paddr);
+        logData2(buffer); 
 	return 0;
     }
     else
-    {
+    { 
+
        __sync_synchronize();
        ret = *paddr;
        __sync_synchronize();
+
+ //       len = sprintf(buffer, "bcm2835_peri_read paddr %08X, value %08X\n", (unsigned) paddr, ret);
+ //       logData2(buffer); 
        return ret;
     }
 }
@@ -138,9 +159,13 @@ uint32_t bcm2835_peri_read(volatile uint32_t* paddr)
  */
 uint32_t bcm2835_peri_read_nb(volatile uint32_t* paddr)
 {
+
     if (debug)
     {
-	printf("bcm2835_peri_read_nb  paddr %08X\n", (unsigned) paddr);
+	// printf("bcm2835_peri_read_nb  paddr %08X\n", (unsigned) paddr);
+        len = sprintf(buffer, "bcm2835_peri_read_nb  paddr %08X\n", (unsigned) paddr);
+        logData2(buffer);        
+
 	return 0;
     }
     else
@@ -154,15 +179,22 @@ uint32_t bcm2835_peri_read_nb(volatile uint32_t* paddr)
 
 void bcm2835_peri_write(volatile uint32_t* paddr, uint32_t value)
 {
+
     if (debug)
     {
-	printf("bcm2835_peri_write paddr %08X, value %08X\n", (unsigned) paddr, value);
+	//printf("bcm2835_peri_write paddr %08X, value %08X\n", (unsigned) paddr, value);
+       len = sprintf(buffer, "bcm2835_peri_write paddr %08X, value %08X\n", (unsigned) paddr, value);
+        logData2(buffer);  
     }
     else
     {
+
+         __sync_synchronize();
+         *paddr = value;
         __sync_synchronize();
-        *paddr = value;
-        __sync_synchronize();
+
+    //    len = sprintf(buffer, "bcm2835_peri_write paddr %08X, value %08X\n", (unsigned) paddr, value);
+     //   logData2(buffer);  
     }
 }
 
@@ -171,8 +203,9 @@ void bcm2835_peri_write_nb(volatile uint32_t* paddr, uint32_t value)
 {
     if (debug)
     {
-	printf("bcm2835_peri_write_nb paddr %08X, value %08X\n",
-               (unsigned) paddr, value);
+	//printf("bcm2835_peri_write_nb paddr %08X, value %08X\n", (unsigned) paddr, value);
+       len = sprintf(buffer, "bcm2835_peri_write_nb paddr %08X, value %08X\n", (unsigned) paddr, value);
+       logData2(buffer);  
     }
     else
     {
@@ -187,8 +220,10 @@ void bcm2835_peri_set_bits(volatile uint32_t* paddr, uint32_t value, uint32_t ma
 {
     uint32_t v = bcm2835_peri_read(paddr);
     v = (v & ~mask) | (value & mask);
+//    len = sprintf(buffer, "bcm2835_peri_set paddr %08X, value %08X\n", (unsigned) paddr, value);
+//    logData2(buffer);  
     bcm2835_peri_write(paddr, v);
-}
+}   
 
 /*
 // Low level convenience functions
@@ -451,7 +486,10 @@ void bcm2835_delayMicroseconds(uint64_t micros)
     if (debug)
     {
 	/* Cant access sytem timers in debug mode */
-	printf("bcm2835_delayMicroseconds %lld\n", micros);
+	//printf("bcm2835_delayMicroseconds %lld\n", micros);
+        len = sprintf(buffer,"bcm2835_delayMicroseconds %lld\n", micros);
+        logData2(buffer);        
+
 	return;
     }
 
@@ -543,10 +581,10 @@ void bcm2835_gpio_set_pud(uint8_t pin, uint8_t pud)
 int bcm2835_spi_begin(void)
 {
     volatile uint32_t* paddr;
-
+    logData2("bcm2835_spi_begin");
     if (bcm2835_spi0 == MAP_FAILED)
       return 0; /* bcm2835_init() failed, or not root */
-    
+    logData2("bcm2835_spi_begin mapsucceeded");
     /* Set the SPI0 pins to the Alt 0 function to enable SPI0 access on them */
     bcm2835_gpio_fsel(RPI_GPIO_P1_26, BCM2835_GPIO_FSEL_ALT0); /* CE1 */
     bcm2835_gpio_fsel(RPI_GPIO_P1_24, BCM2835_GPIO_FSEL_ALT0); /* CE0 */
@@ -730,8 +768,15 @@ void bcm2835_spi_transfern(char* buf, uint32_t len)
 
 void bcm2835_spi_chipSelect(uint8_t cs)
 {
+
     volatile uint32_t* paddr = bcm2835_spi0 + BCM2835_SPI0_CS/4;
     /* Mask in the CS bits of CS */
+//   len = sprintf(buffer, "bcm2835_spi_chipSelect paddr %08X\n", (unsigned) bcm2835_spi0);
+//    logData2(buffer);  
+//    len = sprintf(buffer, "bcm2835_spi_chipSelect2 paddr %08X\n", (unsigned) BCM2835_SPI0_CS);
+//    logData2(buffer);  
+//    len = sprintf(buffer, "bcm2835_spi_chipSelect3 paddr %08X\n", (unsigned) paddr);
+//    logData2(buffer);  
     bcm2835_peri_set_bits(paddr, cs, BCM2835_SPI0_CS_CS);
 }
 
@@ -1301,8 +1346,10 @@ void *malloc_aligned(size_t size)
 static void *mapmem(const char *msg, size_t size, int fd, off_t off)
 {
     void *map = mmap(NULL, size, (PROT_READ | PROT_WRITE), MAP_SHARED, fd, off);
-    if (map == MAP_FAILED)
-	fprintf(stderr, "bcm2835_init: %s mmap failed: %s\n", msg, strerror(errno));
+    if (map == MAP_FAILED){
+       len = sprintf(buffer, "bcm2835_init: %s mmap failed: %s\n", msg, strerror(errno));
+       logData2(buffer);
+    }
     return map;
 }
 
@@ -1318,10 +1365,12 @@ int bcm2835_init(void)
 {
     int  memfd;
     int  ok;
+
     FILE *fp;
 
     if (debug) 
     {
+        
         bcm2835_peripherals = (uint32_t*)BCM2835_PERI_BASE;
 
 	bcm2835_pads = bcm2835_peripherals + BCM2835_GPIO_PADS/4;
@@ -1340,13 +1389,21 @@ int bcm2835_init(void)
     */
     if ((fp = fopen(BMC2835_RPI2_DT_FILENAME , "rb")))
     {
+        logData2("s-file");
         unsigned char buf[4];
 	fseek(fp, BMC2835_RPI2_DT_PERI_BASE_ADDRESS_OFFSET, SEEK_SET);
-	if (fread(buf, 1, sizeof(buf), fp) == sizeof(buf))
-	  bcm2835_peripherals_base = (uint32_t *)(buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3] << 0);
+	if (fread(buf, 1, sizeof(buf), fp) == sizeof(buf)){
+	   bcm2835_peripherals_base = (uint32_t *)(buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3] << 0);
+  //         len = sprintf(buffer, "bcm2835_init bcm2835_peripherals_base %08X\n", (unsigned) bcm2835_peripherals_base );
+  //         logData2(buffer);
+        }
 	fseek(fp, BMC2835_RPI2_DT_PERI_SIZE_OFFSET, SEEK_SET);
-	if (fread(buf, 1, sizeof(buf), fp) == sizeof(buf))
+	if (fread(buf, 1, sizeof(buf), fp) == sizeof(buf)){
+          logData2("Init - Read size");
 	  bcm2835_peripherals_size = (buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3] << 0);
+  //         len = sprintf(buffer, "bcm2835_init bcm2835_peripheral_size %u\n", (unsigned) bcm2835_peripherals_size );
+  //         logData2(buffer);
+        }
 	fclose(fp);
     }
     /* else we are prob on RPi 1 with BCM2835, and use the hardwired defaults */
@@ -1360,18 +1417,24 @@ int bcm2835_init(void)
     ok = 0;
     if (geteuid() == 0)
     {
+      //logData2("ahaaa");
       /* Open the master /dev/mem device */
       if ((memfd = open("/dev/mem", O_RDWR | O_SYNC) ) < 0) 
 	{
-	  fprintf(stderr, "bcm2835_init: Unable to open /dev/mem: %s\n",
-		  strerror(errno)) ;
+
+          len = sprintf(buffer, "bcm2835_init: Unable to open /dev/mem: %s\n", strerror(errno));
+          logData2(buffer);
+
 	  goto exit;
 	}
       
+	
       /* Base of the peripherals block is mapped to VM */
       bcm2835_peripherals = mapmem("gpio", bcm2835_peripherals_size, memfd, (uint32_t)bcm2835_peripherals_base);
+     // logData2("b4 aha");
       if (bcm2835_peripherals == MAP_FAILED) goto exit;
-      
+
+      //logData2("aha");
       /* Now compute the base addresses of various peripherals, 
       // which are at fixed offsets within the mapped peripherals block
       // Caution: bcm2835_peripherals is uint32_t*, so divide offsets by 4
@@ -1393,16 +1456,40 @@ int bcm2835_init(void)
       /* Open the master /dev/mem device */
       if ((memfd = open("/dev/gpiomem", O_RDWR | O_SYNC) ) < 0) 
 	{
-	  fprintf(stderr, "bcm2835_init: Unable to open /dev/gpiomem: %s\n",
-		  strerror(errno)) ;
+          len = sprintf(buffer, "bcm2835_init: Unable to open /dev/gpiomem: %s\n", strerror(errno));
+          logData2(buffer);
 	  goto exit;
 	}
       
       /* Base of the peripherals block is mapped to VM */
       bcm2835_peripherals_base = 0;
       bcm2835_peripherals = mapmem("gpio", bcm2835_peripherals_size, memfd, (uint32_t)bcm2835_peripherals_base);
+
+        len = sprintf(buffer, "bcm2835_init bcm2835_peripherals%08X\n", (unsigned) bcm2835_peripherals );
+        logData2(buffer);
+        len = sprintf(buffer, "bcm2835_init bcm2835_peripherals_base%08X\n", (unsigned) bcm2835_peripherals_base );
+        logData2(buffer);
+        len = sprintf(buffer, "bcm2835_ init bcm2835_pads %08X", (unsigned) bcm2835_pads);
+        logData2(buffer);  
+        len = sprintf(buffer, "bcm2835_ init bcm2835_clk %08X", (unsigned) bcm2835_clk);
+        logData2(buffer); 
+        len = sprintf(buffer, "bcm2835_ init bcm2835_gpio %08X", (unsigned) bcm2835_gpio);
+        logData2(buffer); 
+        len = sprintf(buffer, "bcm2835_ init bcm2835_pwm %08X", (unsigned) bcm2835_pwm);
+        logData2(buffer); 
+        len = sprintf(buffer, "bcm2835_ init bcm2835_spi0 %08X", (unsigned) bcm2835_spi0);
+        logData2(buffer); 
+        len = sprintf(buffer, "bcm2835_ init bcm2835_bsc0 %08X", (unsigned) bcm2835_bsc0);
+        logData2(buffer); 
+        len = sprintf(buffer, "bcm2835_ init bcm2835_bsc1 %08X", (unsigned) bcm2835_bsc1);
+        logData2(buffer); 
+        len = sprintf(buffer, "bcm2835_ init bcm2835_st %08X", (unsigned) bcm2835_st);
+        logData2(buffer); 
+
       if (bcm2835_peripherals == MAP_FAILED) goto exit;
       bcm2835_gpio = bcm2835_peripherals;
+//      len = sprintf(buffer, "bcm2835_ init bcm2835_gpio %08X", (unsigned) bcm2835_gpio);
+//      logData2(buffer); 
       ok = 1;
     }
 
@@ -1420,6 +1507,8 @@ exit:
 int bcm2835_close(void)
 {
     if (debug) return 1; /* Success */
+
+    logData2("BCM2835 close");
 
     unmapmem((void**) &bcm2835_peripherals, bcm2835_peripherals_size);
     bcm2835_peripherals = MAP_FAILED;

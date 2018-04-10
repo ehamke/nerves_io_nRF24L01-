@@ -44,6 +44,19 @@ typedef enum { RF24_1MBPS = 0, RF24_2MBPS, RF24_250KBPS } rf24_datarate_e;
  */
 typedef enum { RF24_CRC_DISABLED = 0, RF24_CRC_8, RF24_CRC_16 } rf24_crclength_e;
 
+struct RF24_config
+{
+    bool active;
+    rf24_datarate_e data_rate;              // 1MBPS, 2MBPS, 250KBPS
+    rf24_crclength_e CRC_length;  // DISABLED, 8 bits, 16 bits
+    uint8_t PA_level;          // -18dBm, -12dBm,-6dBM, and 0dBm
+    uint8_t reading_pipe;
+    uint8_t writing_pipe;
+    uint8_t RFchannel;
+} ;
+
+
+
 /**
  * Driver for nRF24L01(+) 2.4GHz Wireless Transceiver
  */
@@ -77,7 +90,6 @@ private:
   uint8_t pipe0_reading_address[5]; /**< Last address set on pipe 0 for reading. */
   uint8_t addr_width; /**< The address width to use - 3,4 or 5 bytes. */
   
-
 protected:
   /**
    * SPI transactions
@@ -2009,5 +2021,4 @@ private:
  *
  *<br><br><br>
  */
-
 #endif // __RF24_H__
